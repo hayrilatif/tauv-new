@@ -1,0 +1,14 @@
+# Example configuration file for the orchestrator
+# Adjust parameters as needed
+lcm_url: "udpm://239.255.76.67:7667?recv_addr=192.168.1.101&ttl=1"
+
+camera_streamer:
+  video_source: 0
+  width: 640
+  height: 480
+  fps: 20
+  channel: "video_stream"
+  quality: 80
+  debug_video: true
+  compression: "lz4"
+

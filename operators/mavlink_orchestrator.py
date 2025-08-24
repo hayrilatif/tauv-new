@@ -1,0 +1,70 @@
+import sys
+
+import os
+# This line gets the absolute path of the directory the script is in ('.../orchestrator')
+# then gets the parent directory ('.../tauv') and adds it to the path.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+
+from operators.mavreduction import *
+from pymavlink import mavutil
+import time
+from lcm import LCM
+import pickle
+import tqdm 
+
+
+
+
+
+    
+
+def main_loop(shared_config):
+    print("mavlink_orchestrator")
+
+    rc_channels = RCChannels()
+
+    def handle_rc_channels(channel, data):
+        rc_channels.from_bytes(data)
+        print(f"Received RC_CHANNELS on {channel}: {rc_channels.to_dict()}")
+
+    lcm = LCM(shared_config["lcm_url"])
+    lcm.subscribe("RC_CHANNELS", handle_rc_channels)
+
+    print("Sensor akışı başlatılıyor...")
+
+    
+    master = connect_mavlink()
+
+    while master:
+        try:
+            raw_imu_data = get_raw_imu(master, hz=10)
+            raw_imu_data = pickle.dumps(raw_imu_data)
+            lcm.publish("RAW_IMU", raw_imu_data)
+
+            scaled_imu_data = get_scaled_imu(master, hz=10)
+            scaled_imu_data = pickle.dumps(scaled_imu_data)
+            lcm.publish("SCALED_IMU", scaled_imu_data)
+
+
+            attitude_data = get_attitude(master, hz=10)
+            attitude_data = pickle.dumps(attitude_data)
+            lcm.publish("ATTITUDE", attitude_data)
+            
+            #send this rc_channels.to_list()
+            send_rc_override(master, [1550,1550,1550,1550,1550,1550,1550,1550])
+            print("rc sent")
+
+            #print(get_scaled_imu(master, hz=10))
+
+            # LCM mesajlarını işleme
+            lcm.handle_timeout(10)
+
+            time.sleep(1/30)  # 100 ms bekleme
+            print("Sensor verisi alındı ve publish edildi.")
+
+        except KeyboardInterrupt:
+            print("Program sonlandırılıyor...")
+            break
+        except Exception as e:
+            print(f"Hata oluştu: {str(e)}")
