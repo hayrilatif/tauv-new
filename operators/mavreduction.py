@@ -67,48 +67,9 @@ from lcm import LCM
 import pickle
 import numpy as np
 
-class RCChannels:
-    pitch: int = 1500
-    roll: int = 1500
-    throttle: int = 1500
-    yaw: int = 1500
-    forward: int = 1500
-    backward: int = 1500
-    left: int = 1500
-    right: int = 1500
 
-    def to_list(self):
-        return [
-            self.pitch, self.roll, self.throttle, self.yaw,
-            self.forward, self.backward, self.left, self.right
-        ]
-    
-    def to_dict(self):
-        return {
-            "pitch": self.pitch,
-            "roll": self.roll,
-            "throttle": self.throttle,
-            "yaw": self.yaw,
-            "forward": self.forward,
-            "backward": self.backward,
-            "left": self.left,
-            "right": self.right
-        }
-    
-    def to_bytes(self):
-        return pickle.dumps(self.to_dict())
-    
-    def from_bytes(self, data):
-        rc_data = pickle.loads(data)
-        self.pitch = rc_data.get("pitch", 1500)
-        self.roll = rc_data.get("roll", 1500)
-        self.throttle = rc_data.get("throttle", 1500)
-        self.yaw = rc_data.get("yaw", 1500)
-        self.forward = rc_data.get("forward", 1500)
-        self.backward = rc_data.get("backward", 1500)
-        self.left = rc_data.get("left", 1500)
-        self.right = rc_data.get("right", 1500)
-
+def get_rc_channel(channel):
+    return RC_CHANNELS[channel] - 1
 
 
 def _send_long_command(master, command, conf=0, param1=0, param2=0, param3=0, param4=0, param5=0, param6=0, param7=0):
@@ -179,13 +140,13 @@ def get_scaled_imu(master, hz=10) -> dict:
         if msg:
             return msg.to_dict()
 
-def arm(): 
+def arm(master): 
         print("Armlıyor...")
-        _send_long_command(CMDS['MAV_CMD_COMPONENT_ARM_DISARM'], param1=1) # param2=21196
+        _send_long_command(master, CMDS['MAV_CMD_COMPONENT_ARM_DISARM'], param1=1) # param2=21196
 
-def disarm():  
+def disarm(master):  
         print("Disarmlıyor...")
-        _send_long_command(CMDS['MAV_CMD_COMPONENT_ARM_DISARM'], param1=0) # param2=21196
+        _send_long_command(master, CMDS['MAV_CMD_COMPONENT_ARM_DISARM'], param1=0) # param2=21196
 
 def set_mode(mode):
     if mode not in MODES:
@@ -199,7 +160,7 @@ def set_mode(mode):
         param2=mode_id
     )
 
-def send_rc_override(master, rc_channels = [1500] * 8):
+def send_rc_override(master, rc_channels = [65535] * 18):
     try:
         if not master:
             return
@@ -210,7 +171,8 @@ def send_rc_override(master, rc_channels = [1500] * 8):
             master.target_component,
             *rc_channels
         )
-            
+        print("rc_messages_applied: ", rc_channels)
+
     except Exception as e:
         print(f"RC kanal gönderiminde problem: {str(e)}")
 

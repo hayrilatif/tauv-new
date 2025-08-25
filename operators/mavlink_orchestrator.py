@@ -12,29 +12,24 @@ import time
 from lcm import LCM
 import pickle
 import tqdm 
+from operators.rc_commander import RCStreamer
 
-
-
-
-
-    
 
 def main_loop(shared_config):
     print("mavlink_orchestrator")
 
-    rc_channels = RCChannels()
-
-    def handle_rc_channels(channel, data):
-        rc_channels.from_bytes(data)
-        print(f"Received RC_CHANNELS on {channel}: {rc_channels.to_dict()}")
-
     lcm = LCM(shared_config["lcm_url"])
-    lcm.subscribe("RC_CHANNELS", handle_rc_channels)
+    
+    rc_streamer = RCStreamer(shared_config["lcm_url"])
+    rc_streamer.subscribe()
 
     print("Sensor akışı başlatılıyor...")
 
     
     master = connect_mavlink()
+
+    arm(master)
+
 
     while master:
         try:
@@ -52,19 +47,24 @@ def main_loop(shared_config):
             lcm.publish("ATTITUDE", attitude_data)
             
             #send this rc_channels.to_list()
-            send_rc_override(master, [1550,1550,1550,1550,1550,1550,1550,1550])
+            # pitch roll throttle yaw forward lateral
+            send_rc_override(master, rc_streamer.rc_channels)
             print("rc sent")
 
             #print(get_scaled_imu(master, hz=10))
 
             # LCM mesajlarını işleme
-            lcm.handle_timeout(10)
+            rc_streamer.handle()
 
             time.sleep(1/30)  # 100 ms bekleme
-            print("Sensor verisi alındı ve publish edildi.")
+            #print("Sensor verisi alındı ve publish edildi.")
 
         except KeyboardInterrupt:
             print("Program sonlandırılıyor...")
+            disarm(master)
             break
         except Exception as e:
             print(f"Hata oluştu: {str(e)}")
+            disarm(master)
+
+    disarm(master)

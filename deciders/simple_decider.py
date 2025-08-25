@@ -17,7 +17,10 @@ import pickle
 import lz4.frame
 import yaml
 from  origins.efficient_streamer import EfficientVideoStreamer
-from operators.rc_commander import RCCommander
+from operators.rc_commander import RCStreamer
+from  operators.mavreduction import get_rc_channel
+
+MIN_PWM, MAX_PWM = 1450, 1550
 
 class Simple():
   """
@@ -56,43 +59,46 @@ class Simple():
     return {key:value for key, value in zip(["horizontal_error", "steer_angle", "mean_point"], self.__calculate_things(mean_point, first_component) + (mean_point,))}
 
 
-def simple_decider_callback(streamer, frame, commander: RCCommander, simple: Simple):
-    # predict with simple decider    
+def simple_decider_callback(streamer, frame, rc_streamer, simple: Simple):
+    # predict with simple decider
     results = simple.evaluate(frame)
 
     horizontal_error = results["horizontal_error"]
     steer_angle = results["steer_angle"]
 
+    rc = [65535] * 18
+
     if abs(steer_angle) > 12:
-      if horizontal_error <0:
+      if horizontal_error < 0:
         yaw = "<-"
-        #drone_commands.append((DroneCommand.COMMAND_YAW, MAX_RC, 0.0, 0.0, 1.0))
-        # send drone command to turn left
-        #commander.send_command(DroneCommand.COMMAND_YAW, MAX_RC, 0.0, 0.0, 1.0)
+        rc[get_rc_channel("YAW")] = MAX_PWM
       else:
         yaw = "->"
-        #drone_commands.append((DroneCommand.COMMAND_YAW, -MAX_RC, 0.0, 0.0, 1.0))
+        rc[get_rc_channel("YAW")] = MIN_PWM
+
     else:
       yaw = "."
-      #drone_commands.append((DroneCommand.COMMAND_YAW, 0.0, 0.0, 0.0, 1.0))
+      rc[get_rc_channel("YAW")] = 1500
 
     if abs(horizontal_error) > 50:
       if horizontal_error < 0:
         strafe = "<-"
-        #drone_commands.append((DroneCommand.COMMAND_STRAFE, -MAX_RC, 0.0, 0.0, 1.0))
+        rc[get_rc_channel("RIGHT")] = MAX_PWM
+        
       else:
         strafe = "->"
-        #drone_commands.append((DroneCommand.COMMAND_STRAFE, MAX_RC, 0.0, 0.0, 1.0))
+        rc[get_rc_channel("RIGHT")] = MIN_PWM
     else:
       strafe = "."
-      #drone_commands.append((DroneCommand.COMMAND_STRAFE, 0.0, 0.0, 0.0, 1.0))
+      rc[get_rc_channel("RIGHT")] = 1500
+      
 
     if abs(horizontal_error) < 50 and abs(steer_angle) < 12:
       throttle = "/\\"
-      #drone_commands.append((DroneCommand.COMMAND_FORWARD, MAX_RC, 0.0, 0.0, 1.0))
+      rc[get_rc_channel("FORWARD")] = MAX_PWM
     else:
       throttle = "."
-      #drone_commands.append((DroneCommand.COMMAND_FORWARD, 0.0, 0.0, 0.0, 1.0))
+      rc[get_rc_channel("FORWARD")] = 1500
 
     print(f"""
         ------------------------------------------------
@@ -104,6 +110,8 @@ def simple_decider_callback(streamer, frame, commander: RCCommander, simple: Sim
                    throttle: {throttle}
         ------------------------------------------------
     """)
+
+    rc_streamer.send_rc(rc)
 
 
     frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)  # Convert to BGR for visualization
@@ -146,38 +154,17 @@ def main_loop(shared_config):
   print("simple_decider")
 
   simple = Simple((640, 480))
-  commander = RCCommander()
+  rc_streamer = RCStreamer()
   streamer = EfficientVideoStreamer()
 
-  streamer.subscribe("segmentation_stream", lambda frame: simple_decider_callback(streamer, frame, commander, simple))
+  streamer.subscribe("segmentation_stream", lambda frame: simple_decider_callback(streamer, frame, rc_streamer, simple))
 
   while True:
       try:
           streamer.handle()
+          rc_streamer.handle()
       except KeyboardInterrupt:
           print("Program sonlandırılıyor...")
           break
       except Exception as e:
           print(f"Hata oluştu: {str(e)}")
-
-
-def main_loop():
-  print("simple_decider")
-
-  simple = Simple((640, 480))
-  commander = RCCommander()
-  streamer = EfficientVideoStreamer()
-
-  streamer.subscribe("segmentation_stream", lambda frame: simple_decider_callback(streamer, frame, commander, simple))
-
-  while True:
-      try:
-          streamer.handle()
-      except KeyboardInterrupt:
-          print("Program sonlandırılıyor...")
-          break
-      except Exception as e:
-          print(f"Hata oluştu: {str(e)}")
-
-if __name__ == "__main__":
-    main_loop()
